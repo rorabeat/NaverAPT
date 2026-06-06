@@ -1,0 +1,32 @@
+[crawl_dong] 로딩 중...
+[crawl_dong] '망포동' 검색 중...
+[crawl_dong] 단지 마커 34개 발견
+[crawl_dong] 단지 1 오류: 'cp949' codec can't encode character '\u2014' in position 20: illegal multibyte sequence
+[crawl_dong] 단지 2 오류: 'cp949' codec can't encode character '\u2014' in position 28: illegal multibyte sequence
+[crawl_dong] 단지 3 오류: 'cp949' codec can't encode character '\u2014' in position 22: illegal multibyte sequence
+[crawl_dong] 단지 4 오류: 'cp949' codec can't encode character '\u2014' in position 25: illegal multibyte sequence
+[crawl_dong] 단지 5 오류: 'cp949' codec can't encode character '\u2014' in position 28: illegal multibyte sequence
+[crawl_dong] 단지 6 오류: 'cp949' codec can't encode character '\u2014' in position 29: illegal multibyte sequence
+[crawl_dong] 단지 7 오류: 'cp949' codec can't encode character '\u2014' in position 26: illegal multibyte sequence
+[crawl_dong] 단지 8 오류: 'cp949' codec can't encode character '\u2014' in position 28: illegal multibyte sequence
+[crawl_dong] 단지 9 오류: 'cp949' codec can't encode character '\u2014' in position 26: illegal multibyte sequence
+[crawl_dong] 단지 10 오류: 'cp949' codec can't encode character '\u2014' in position 30: illegal multibyte sequence
+[crawl_dong] 단지 11 오류: 'cp949' codec can't encode character '\u2014' in position 32: illegal multibyte sequence
+Traceback (most recent call last):
+  File "C:\gitRepo\NaverAPT\GetPriceAPTByName\main.py", line 84, in <module>
+    main()
+    ~~~~^^
+  File "C:\gitRepo\NaverAPT\GetPriceAPTByName\main.py", line 78, in main
+    run_dong_mode(args.dong, args.min_floor, args.output_csv)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\gitRepo\NaverAPT\GetPriceAPTByName\main.py", line 30, in run_dong_mode
+    print(f"\n[결과] {dong_name} \u2014 {min_floor}층 이상 기준")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\u2014' in position 11: illegal multibyte sequence
+Exception ignored while calling deallocator <function Chrome.__del__ at 0x000001E4FBCB4A90>:
+Traceback (most recent call last):
+  File "C:\Users\d2njj\AppData\Roaming\Python\Python314\site-packages\undetected_chromedriver\__init__.py", line 843, in __del__
+    self.quit()
+  File "C:\Users\d2njj\AppData\Roaming\Python\Python314\site-packages\undetected_chromedriver\__init__.py", line 798, in quit
+    time.sleep(0.1)
+OSError: [WinError 6] 핸들이 잘못되었습니다

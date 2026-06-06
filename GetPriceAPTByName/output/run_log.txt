@@ -1,0 +1,36 @@
+[crawl_dong] 로딩 중...
+[crawl_dong] '망포동' 검색 중...
+[search_dong] 오류: Message: 
+Stacktrace:
+	undetected_chromedriver!GetHandleVerifier [0xadb593+105d3]
+	undetected_chromedriver!GetHandleVerifier [0xadb6c4+10704]
+	undetected_chromedriver!(No symbol) [0x8e1ea0]
+	undetected_chromedriver!(No symbol) [0x92b28a]
+	undetected_chromedriver!(No symbol) [0x92b52b]
+	undetected_chromedriver!(No symbol) [0x96d052]
+	undetected_chromedriver!(No symbol) [0x94d7c4]
+	undetected_chromedriver!(No symbol) [0x96a936]
+	undetected_chromedriver!(No symbol) [0x94d516]
+	undetected_chromedriver!(No symbol) [0x9208e9]
+	undetected_chromedriver!(No symbol) [0x9216a4]
+	undetected_chromedriver!GetHandleVerifier [0xd63014+298054]
+	undetected_chromedriver!GetHandleVerifier [0xd5e603+293643]
+	undetected_chromedriver!GetHandleVerifier [0xd7ea05+2b3a45]
+	undetected_chromedriver!GetHandleVerifier [0xaf54e8+2a528]
+	undetected_chromedriver!GetHandleVerifier [0xafcd1d+31d5d]
+	undetected_chromedriver!GetHandleVerifier [0xae3e68+18ea8]
+	undetected_chromedriver!GetHandleVerifier [0xae4015+19055]
+	undetected_chromedriver!GetHandleVerifier [0xacd65f+269f]
+	KERNEL32!BaseThreadInitThunk [0x765a7ba9+19]
+	ntdll!RtlInitializeExceptionChain [0x7756c3ab+6b]
+	ntdll!RtlClearBits [0x7756c32f+bf]
+
+[crawl_dong] '망포동' 검색 실패
+[main] '망포동' 결과 없음
+Exception ignored while calling deallocator <function Chrome.__del__ at 0x00000145D68889E0>:
+Traceback (most recent call last):
+  File "C:\Users\d2njj\AppData\Roaming\Python\Python314\site-packages\undetected_chromedriver\__init__.py", line 843, in __del__
+    self.quit()
+  File "C:\Users\d2njj\AppData\Roaming\Python\Python314\site-packages\undetected_chromedriver\__init__.py", line 798, in quit
+    time.sleep(0.1)
+OSError: [WinError 6] 핸들이 잘못되었습니다
