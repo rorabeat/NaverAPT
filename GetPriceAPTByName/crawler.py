@@ -9,6 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from config import HEADLESS, SELECTORS, TARGET_URL, UC_VERSION, WINDOW_SIZE, random_delay
+from parser import STANDARD_PYEONG, parse_area_option
 
 BASE_URL = "https://fin.land.naver.com"
 
@@ -179,10 +180,10 @@ def _set_deal_type(driver: uc.Chrome, deal_type: str):
             continue
 
 
-def _collect_eligible_cards(driver: uc.Chrome, complex_name: str, dong_name: str,
-                             deal_type: str, min_floor: int = 4) -> list[dict]:
-    """정렬된 카드 목록에서 층수 조건을 만족하는 모든 카드의 상세 정보를 반환한다."""
-    results = []
+def _find_first_eligible_card(driver: uc.Chrome, complex_name: str, dong_name: str,
+                               deal_type: str, min_floor: int = 4,
+                               pyeong: int | None = None) -> dict | None:
+    """정렬된 카드 목록에서 층수 조건을 만족하는 첫 번째 카드 1건만 반환한다."""
     try:
         cards = driver.find_elements(By.CSS_SELECTOR, SELECTORS["article_items"])
         for card in cards[:50]:
@@ -192,36 +193,254 @@ def _collect_eligible_cards(driver: uc.Chrome, complex_name: str, dong_name: str
                 if not floor_text or not _is_floor_eligible(floor_text, min_floor):
                     continue
 
-                # 가격 (첫 줄만)
                 try:
                     price_raw = card.find_element(By.CSS_SELECTOR, SELECTORS["card_price"]).text.strip()
                     price = price_raw.splitlines()[0].strip()
                 except (NoSuchElementException, StaleElementReferenceException):
                     price = ""
 
-                # 단지명+동호 (예: "힐스테이트영통 105동")
                 try:
                     unit_text = card.find_element(By.CSS_SELECTOR, SELECTORS["card_name"]).text.strip()
                 except (NoSuchElementException, StaleElementReferenceException):
                     unit_text = complex_name
 
-                results.append({
+                area_text = summary_els[1].text.strip() if len(summary_els) > 1 else ""
+                record = {
                     "단지명":   complex_name,
                     "동":      dong_name,
                     "동호":     unit_text,
                     "거래유형":  deal_type,
                     "가격":     price,
-                    "면적":     summary_els[1].text.strip() if len(summary_els) > 1 else "",
+                    "평수":     f"{pyeong}평" if pyeong else "",
+                    "면적":     area_text,
                     "층":      floor_text,
                     "향":      summary_els[3].text.strip() if len(summary_els) > 3 else "",
                     "건물유형":  summary_els[0].text.strip() if len(summary_els) > 0 else "",
                     "기준층":   f"{min_floor}층 이상",
-                })
+                }
+                return record
             except (StaleElementReferenceException, IndexError):
                 continue
     except Exception:
         pass
-    return results
+    return None
+
+
+def _is_area_filter_open(driver: uc.Chrome) -> bool:
+    """면적 필터 드롭다운이 열려 있는지 확인한다."""
+    try:
+        layers = driver.find_elements(By.CSS_SELECTOR, SELECTORS["area_filter_layer"])
+        return any(layer.is_displayed() for layer in layers)
+    except Exception:
+        return False
+
+
+def _open_area_filter(driver: uc.Chrome) -> bool:
+    """전체면적 칩을 클릭하여 면적 필터 드롭다운을 연다."""
+    if _is_area_filter_open(driver):
+        return True
+    try:
+        chip = driver.find_element(By.CSS_SELECTOR, SELECTORS["area_filter_chip"])
+        driver.execute_script("arguments[0].click();", chip)
+        time.sleep(0.8)
+        _wait_for(driver, SELECTORS["area_filter_layer"], timeout=5)
+        return True
+    except (NoSuchElementException, TimeoutException):
+        return False
+
+
+def _close_area_filter_outside(driver: uc.Chrome):
+    """드롭다운 외부를 클릭해 메뉴를 닫고 필터를 적용한다."""
+    if not _is_area_filter_open(driver):
+        return
+
+    outside_targets = [
+        "[class*='ComplexSummary_name']",
+        "[class*='ComplexArticleTab_article']",
+        "[class*='LineTab-module_list']",
+        "#complex_detail",
+    ]
+    for sel in outside_targets:
+        try:
+            el = driver.find_element(By.CSS_SELECTOR, sel)
+            driver.execute_script("arguments[0].click();", el)
+            time.sleep(0.5)
+            if not _is_area_filter_open(driver):
+                break
+        except NoSuchElementException:
+            continue
+
+    if _is_area_filter_open(driver):
+        try:
+            driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+            time.sleep(0.5)
+        except Exception:
+            pass
+
+    if _is_area_filter_open(driver):
+        try:
+            chip = driver.find_element(By.CSS_SELECTOR, SELECTORS["area_filter_chip"])
+            driver.execute_script("arguments[0].click();", chip)
+            time.sleep(0.5)
+        except NoSuchElementException:
+            pass
+
+
+def _wait_for_filter_reload(driver: uc.Chrome, timeout: int = 12):
+    """면적 필터 적용 후 매물 목록 갱신을 기다린다."""
+    time.sleep(0.8)
+    try:
+        WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, SELECTORS["article_list_ul"]))
+        )
+    except TimeoutException:
+        pass
+
+    # 카드 DOM 교체 대기 (stale 방지)
+    prev_sig = ""
+    for _ in range(8):
+        cards = driver.find_elements(By.CSS_SELECTOR, SELECTORS["article_items"])
+        sig = "|".join(c.text[:40] for c in cards[:3])
+        if sig and sig == prev_sig:
+            break
+        prev_sig = sig
+        time.sleep(0.6)
+
+
+def _area_label_key(text: str) -> str:
+    """label 텍스트에서 면적 식별 키를 추출한다."""
+    supply, _ = parse_area_option(text)
+    return str(supply) if supply is not None else text.strip()
+
+
+def _read_area_filter_options(driver: uc.Chrome) -> list[dict]:
+    """열린 면적 필터 드롭다운에서 항목을 파싱한다."""
+    options = []
+    labels = driver.find_elements(By.CSS_SELECTOR, SELECTORS["area_filter_items"])
+    for label in labels:
+        text = label.text.strip()
+        if not text or "전체면적" in text:
+            continue
+        supply, pyeong = parse_area_option(text)
+        if supply is None:
+            continue
+        options.append({
+            "key": _area_label_key(text),
+            "text": text,
+            "supply_m2": supply,
+            "pyeong": pyeong,
+        })
+    return options
+
+
+def _get_area_filter_options(driver: uc.Chrome) -> list[dict]:
+    """면적 필터 드롭다운을 열어 옵션 목록을 읽고 닫는다."""
+    if not _open_area_filter(driver):
+        return []
+    options = _read_area_filter_options(driver)
+    _close_area_filter_outside(driver)
+    _wait_for_filter_reload(driver)
+    return options
+
+
+def _select_single_area(driver: uc.Chrome, target_key: str) -> bool:
+    """면적 1개만 선택 → 외부 클릭으로 적용 → 목록 갱신 대기."""
+    if not _open_area_filter(driver):
+        return False
+
+    labels = driver.find_elements(By.CSS_SELECTOR, SELECTORS["area_filter_items"])
+    clicked = False
+    for label in labels:
+        text = label.text.strip()
+        if "전체면적" in text:
+            continue
+        if _area_label_key(text) == target_key:
+            driver.execute_script("arguments[0].click();", label)
+            clicked = True
+            time.sleep(0.4)
+            break
+
+    if not clicked:
+        _close_area_filter_outside(driver)
+        return False
+
+    _close_area_filter_outside(driver)
+    _wait_for_filter_reload(driver)
+    return True
+
+
+def _reset_area_filter_all(driver: uc.Chrome):
+    """전체면적(모든 면적)으로 필터를 초기화한다."""
+    if not _open_area_filter(driver):
+        return
+    labels = driver.find_elements(By.CSS_SELECTOR, SELECTORS["area_filter_items"])
+    for label in labels:
+        if "전체면적" in label.text:
+            driver.execute_script("arguments[0].click();", label)
+            time.sleep(0.4)
+            break
+    _close_area_filter_outside(driver)
+    _wait_for_filter_reload(driver)
+
+
+def _collect_by_pyeong(driver: uc.Chrome, complex_name: str, dong_name: str,
+                        min_floor: int) -> tuple[list[dict], list[dict]]:
+    """단지별 면적(25/29/33평 해당)마다 1개씩 선택 → 매매최저가·전세최고가 1건씩 수집."""
+    mae_records: list[dict] = []
+    jeon_records: list[dict] = []
+
+    area_options = _get_area_filter_options(driver)
+    target_options = [opt for opt in area_options if opt["pyeong"] in STANDARD_PYEONG]
+
+    if not target_options:
+        print("  [면적필터] 옵션 없음 — 전체 면적 기준 1건씩 수집")
+        _set_deal_type(driver, "매매")
+        _click_sort(driver, "낮은")
+        card = _find_first_eligible_card(driver, complex_name, dong_name, "매매", min_floor)
+        if card:
+            mae_records.append(card)
+        _set_deal_type(driver, "전세")
+        _click_sort(driver, "높은")
+        card = _find_first_eligible_card(driver, complex_name, dong_name, "전세", min_floor)
+        if card:
+            jeon_records.append(card)
+        return mae_records, jeon_records
+
+    for opt in target_options:
+        pyeong = opt["pyeong"]
+        label = f"{opt['supply_m2']}㎡ ({pyeong}평)"
+        print(f"  [면적선택] {label}")
+
+        if not _select_single_area(driver, opt["key"]):
+            print(f"    → 면적 선택 실패, 건너뜀")
+            continue
+
+        _set_deal_type(driver, "매매")
+        _click_sort(driver, "낮은")
+        mae_card = _find_first_eligible_card(
+            driver, complex_name, dong_name, "매매", min_floor, pyeong=pyeong
+        )
+        if mae_card:
+            mae_card["공급면적"] = f"{opt['supply_m2']}㎡"
+            mae_records.append(mae_card)
+            print(f"    매매: {mae_card['가격']}")
+        else:
+            print("    매매: (해당 없음)")
+
+        _set_deal_type(driver, "전세")
+        _click_sort(driver, "높은")
+        jeon_card = _find_first_eligible_card(
+            driver, complex_name, dong_name, "전세", min_floor, pyeong=pyeong
+        )
+        if jeon_card:
+            jeon_card["공급면적"] = f"{opt['supply_m2']}㎡"
+            jeon_records.append(jeon_card)
+            print(f"    전세: {jeon_card['가격']}")
+        else:
+            print("    전세: (해당 없음)")
+
+    _reset_area_filter_all(driver)
+    return mae_records, jeon_records
 
 
 def _get_complex_name(driver: uc.Chrome) -> str:
@@ -275,7 +494,7 @@ def search_dong(driver: uc.Chrome, dong_name: str) -> bool:
 
 
 def crawl_dong(dong_name: str, min_floor: int = 4) -> dict[str, list[dict]]:
-    """동 이름으로 검색하여 각 단지의 매매(낮은가격순) / 전세(높은가격순) 카드 전체를 수집한다.
+    """동 이름으로 검색하여 각 단지의 25/29/33평별 매매최저가·전세최고가 1건씩 수집.
     반환: {"매매": [...], "전세": [...]}
     """
     driver = build_driver()
@@ -320,16 +539,11 @@ def crawl_dong(dong_name: str, min_floor: int = 4) -> dict[str, list[dict]]:
                 _click_article_tab(driver)
                 time.sleep(1)
 
-                # --- 매매: 낮은가격순 전체 수집 ---
-                _set_deal_type(driver, "매매")
-                _click_sort(driver, "낮은")
-                mae_cards = _collect_eligible_cards(driver, complex_name, dong_name, "매매", min_floor)
+                # --- 25/29/33평별 매매최저가·전세최고가 1건씩 수집 ---
+                mae_cards, jeon_cards = _collect_by_pyeong(
+                    driver, complex_name, dong_name, min_floor
+                )
                 mae_records.extend(mae_cards)
-
-                # --- 전세: 높은가격순 전체 수집 ---
-                _set_deal_type(driver, "전세")
-                _click_sort(driver, "높은")
-                jeon_cards = _collect_eligible_cards(driver, complex_name, dong_name, "전세", min_floor)
                 jeon_records.extend(jeon_cards)
 
                 print(f"[crawl_dong] [{idx+1}] {complex_name} — 매매:{len(mae_cards)}건 / 전세:{len(jeon_cards)}건")

@@ -30,6 +30,10 @@ SELECTORS = {
     "expand_button": "[class*='ArticleCard_button-expand']",
     # 패널 스크롤 영역
     "panel_scroll": "#complex_detail",
+    # 면적 필터 (전체면적 칩 + 체크박스 레이어)
+    "area_filter_chip": "button#면적, button[id='면적']",
+    "area_filter_layer": "[class*='ComplexArticleFilter_area-filter'] [class*='CheckboxLayer']",
+    "area_filter_items": "[class*='ComplexArticleFilter_area-filter'] [class*='CheckboxLayer'] ul li label",
 }
 
 # 딜레이 설정 (초)

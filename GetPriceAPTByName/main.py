@@ -1,13 +1,12 @@
 import argparse
+import re
 import sys
 import io
 import os
+from datetime import datetime
 
-# Windows 콘솔 cp949 → utf-8 강제 (em dash 등 처리)
-if hasattr(sys.stdout, 'buffer'):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-if hasattr(sys.stderr, 'buffer'):
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+import pandas as pd
+from openpyxl.styles import PatternFill, Border, Side, Font, Alignment
 
 import config
 from config import OUTPUT_CSV, OUTPUT_DB, TARGET_URL
@@ -23,9 +22,66 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _extract_dong_number(unit_text: str) -> str:
+    """'힐스테이트영통 105동' → '105동', '힐스테이트영통' → ''"""
+    m = re.search(r'(\d+동)', unit_text)
+    return m.group(1) if m else unit_text.strip()
+
+
+def _extract_jeon_area_num(area_text: str) -> str:
+    """'104Am² (전용84A)' → '84', '81Bm² (전용59B)' → '59'"""
+    m = re.search(r'전용\s*(\d+)', area_text)
+    return m.group(1) if m else area_text.strip()
+
+
+def _price_to_int(price_text: str) -> int:
+    """'매매 9억 2,000' → 92000, 비교용 정수 변환."""
+    price_text = re.sub(r'^(매매|전세|월세)\s*', '', price_text.strip())
+    price_text = price_text.replace(",", "").replace(" ", "")
+    m = re.match(r'(\d+)억(\d+)?', price_text)
+    if m:
+        return int(m.group(1)) * 10000 + (int(m.group(2)) if m.group(2) else 0)
+    m2 = re.match(r'(\d+)', price_text)
+    return int(m2.group(1)) if m2 else 0
+
+
+def _deduplicate_records(records: list[dict], keep: str) -> list[dict]:
+    """전용면적 번호 기준 그룹핑 후 keep='min'이면 최저가, 'max'이면 최고가 1건 유지."""
+    groups: dict[tuple, tuple[int, dict]] = {}
+    for r in records:
+        jeon_key = _extract_jeon_area_num(r.get("면적", ""))
+        group_key = (r.get("단지명", ""), jeon_key)
+        price_val = _price_to_int(r.get("가격", ""))
+        if group_key not in groups:
+            groups[group_key] = (price_val, r)
+        else:
+            existing_val, _ = groups[group_key]
+            if (keep == "min" and price_val < existing_val) or \
+               (keep == "max" and price_val > existing_val):
+                groups[group_key] = (price_val, r)
+    return [r for _, r in groups.values()]
+
+
+def _apply_excel_style(ws):
+    """헤더 회색 배경, 데이터 영역 외곽선 적용."""
+    header_fill = PatternFill(fill_type="solid", fgColor="C0C0C0")
+    thin = Side(style="thin", color="000000")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    max_row = ws.max_row
+    max_col = ws.max_column
+
+    for row in ws.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
+        for cell in row:
+            cell.border = border
+            if cell.row == 1:
+                cell.fill = header_fill
+                cell.font = Font(bold=True)
+            cell.alignment = Alignment(vertical="center")
+
+
 def run_dong_mode(dong_name: str, min_floor: int, output_csv: str):
     from crawler import crawl_dong
-    import pandas as pd
 
     data = crawl_dong(dong_name, min_floor=min_floor)
     mae_list = data["매매"]
@@ -35,35 +91,44 @@ def run_dong_mode(dong_name: str, min_floor: int, output_csv: str):
         print(f"[main] '{dong_name}' 결과 없음")
         return
 
-    # 컬럼 순서 정의
-    cols = ["단지명", "동", "동호", "거래유형", "가격", "면적", "층", "향", "건물유형", "기준층"]
+    # 동호: 동 번호만 표시
+    for r in mae_list + jeon_list:
+        r["동호"] = _extract_dong_number(r.get("동호", ""))
+
+    # 전용면적 기준 중복 제거 (매매=최저가, 전세=최고가)
+    mae_list  = _deduplicate_records(mae_list,  keep="min")
+    jeon_list = _deduplicate_records(jeon_list, keep="max")
+
+    # 컬럼 순서 (건물유형·기준층 제외)
+    cols = ["단지명", "동", "동호", "거래유형", "평수", "공급면적", "가격", "면적", "층", "향"]
 
     df_mae  = pd.DataFrame(mae_list,  columns=cols) if mae_list  else pd.DataFrame(columns=cols)
     df_jeon = pd.DataFrame(jeon_list, columns=cols) if jeon_list else pd.DataFrame(columns=cols)
 
-    # 콘솔 요약 출력
-    print(f"\n[결과] {dong_name} — {min_floor}층 이상 기준")
+    print(f"\n[결과] {dong_name} — {min_floor}층 이상 / 전용면적별 최저·최고가")
     print(f"  매매: {len(df_mae)}건 / 전세: {len(df_jeon)}건")
 
-    # Excel 저장 (시트: 매매 / 전세)
     os.makedirs("output", exist_ok=True)
-    xlsx_path = f"output/summary_{dong_name}.xlsx"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    xlsx_path = f"output/{timestamp}_{dong_name}.xlsx"
+
     with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
         df_mae.to_excel(writer,  sheet_name="매매", index=False)
         df_jeon.to_excel(writer, sheet_name="전세", index=False)
 
-        # 컬럼 너비 자동 조정
         for sheet_name, df in [("매매", df_mae), ("전세", df_jeon)]:
             ws = writer.sheets[sheet_name]
+            # 컬럼 너비 자동 조정
             for col_cells in ws.columns:
                 max_len = max((len(str(c.value)) if c.value else 0) for c in col_cells)
                 ws.column_dimensions[col_cells[0].column_letter].width = min(max_len + 4, 40)
+            # 스타일 적용
+            _apply_excel_style(ws)
 
     print(f"[main] 저장 완료: {xlsx_path}")
 
-    # CSV도 함께 저장 (매매+전세 합본)
     all_df = pd.concat([df_mae, df_jeon], ignore_index=True)
-    csv_path = f"output/summary_{dong_name}.csv"
+    csv_path = f"output/{timestamp}_{dong_name}.csv"
     try:
         all_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
         print(f"[main] CSV 저장 완료: {csv_path}")
@@ -103,6 +168,11 @@ def run_map_mode(args):
 
 
 def main():
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
     args = parse_args()
     if args.dong:
         run_dong_mode(args.dong, args.min_floor, args.output_csv)

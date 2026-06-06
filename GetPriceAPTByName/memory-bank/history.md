@@ -4,6 +4,102 @@
 
 ---
 
+## 📅 2026-06-06 (KST, 4차)
+
+### 사용자 프롬프트
+> 동호: 아파트 이름 제거, 동 번호만 표시. 면적: 전용면적 숫자 기준으로 그룹핑 후 매매 최저가 1건. 건물유형·기준층 컬럼 제거. 데이터 외곽선, 헤더 회색 배경.
+
+### AI 처리 결과 요약
+- `main.py` 추가 함수: `_extract_dong_number`, `_extract_jeon_area_num`, `_price_to_int`, `_deduplicate_records`, `_apply_excel_style`
+- 동호 = 동 번호만 표시 ("힐스테이트영통 105동" → "105동")
+- 전용면적 숫자 기준 중복 제거 (매매=최저가, 전세=최고가)
+- 컬럼: 건물유형·기준층 제거, 10개 컬럼으로 축소
+- Excel: 헤더 회색(C0C0C0) + 굵게, 전체 데이터 thin border
+- `test_dong_feature.py`: TC4b(TestMainHelpers) 6개 케이스 추가 → 총 33/33 통과
+
+---
+
+## 📅 2026-06-06 (KST, 3차)
+
+### 사용자 프롬프트
+> 결과 파일은 날짜_시간_동이름 이 표시되도록 해줘
+
+### AI 처리 결과 요약
+- `main.py`: `datetime` import 추가, 출력 파일명을 `output/YYYYMMDD_HHMMSS_동이름.xlsx/.csv` 형식으로 변경
+- 27/27 단위 테스트 통과 확인
+
+---
+
+## 📅 2026-06-06 (KST)
+
+### 사용자 프롬프트
+> 전체면적 버튼 HTML 및 면적 필터 셀렉터 제공. 25/29/33평 변환 후 각 평수별 매매최저가·전세최고가 1건씩 표시. 테스트 진행.
+
+### AI 처리 결과 요약
+1. **버그 수정**: `supply_m2_to_pyeong` 허용 오차 1.5 → 2.0평 (87.87㎡=26.58평이 1.5 초과)
+2. **main.py 리팩토링**: `sys.stdout` 리다이렉트를 모듈 상단에서 `main()` 함수 내부로 이동 (pytest capture 충돌 방지), `import pandas as pd`를 모듈 상단으로 이동
+3. **테스트 수정 (TC4)**: `test_25pyeong_group` — 87.75/87.87㎡ 버킷 허용 오차 조정으로 통과
+4. **테스트 수정 (TC6)**: mock 데이터에 `공급면적` 키 추가, `@patch("main.pd")`로 pandas 전체 mock 전환, ExcelWriter 컨텍스트 매니저 mock 정상화
+5. **결과**: 27/27 단위 테스트 전부 통과
+
+---
+
+## 📅 2026-06-06 18:00:00 (KST)
+
+### 사용자 프롬프트
+> memory-bank 에 업데이트 해줘
+
+### AI 처리 결과 요약
+1. `history.md` — 본 항목 및 Stage 7·8 통합 이력 정리
+2. `implementation-plan.md` — Stage 8(면적 필터 외부 클릭) 추가, Stage 7 결과 보정
+3. `design.md` — 면적 필터 UI 동작, 출력 컬럼, 수집 데이터 필드 갱신
+4. `progress.md` — 신규 생성 (작업 진행 현황)
+5. `architecture.md` — 신규 생성 (파일 구조·면적 필터 함수 역할)
+6. `testresult.md` — 신규 생성 (망포동 E2E 실행 결과 기록)
+
+---
+
+## 📅 2026-06-06 17:30:00 (KST) — 면적 필터 외부 클릭 적용
+
+### 사용자 프롬프트
+> 하나만 선택 후 다른곳을 클릭해서 메뉴가 사라지는 시점에 데이터가 표시됨. 각 사이즈별로 검색할 수 있게. 지금은 체크박스만 체크하고 아무것도 안함.
+
+### AI 처리 결과 요약
+1. `_close_area_filter_outside()` — 단지명/매물목록/탭바 외부 클릭으로 드롭다운 닫기 + 필터 적용
+2. `_select_single_area()` — 면적 1개 선택 → 외부 클릭 → `_wait_for_filter_reload()` 로 목록 갱신 대기
+3. `_collect_by_pyeong()` — 25/29/33평 해당 면적을 **개별 공급면적**마다 순회 수집
+4. `_reset_area_filter_all()` — 단지 처리 후 전체면적으로 초기화
+5. `main.py` — `공급면적` 컬럼 추가
+
+**E2E 실행 결과** (`python main.py --dong "망포동"`)
+- 22개 단지 처리, 매매 40건 / 전세 30건
+- 힐스테이트영통: 87.12/87.75/96.45/110.94/111.31㎡ 각각 매매·전세 수집 확인
+- `output/summary_망포동.xlsx`, `output/summary_망포동.csv` 저장 완료
+
+**변경 파일**: `crawler.py`, `main.py`, `test_dong_feature.py`, `memory-bank/*`
+
+---
+
+## 📅 2026-06-06 16:00:00 (KST) — 평수별 면적 필터 + 최저/최고가 1건 수집
+
+### [2026-06-06] 요청 12
+**사용자 프롬프트**
+> 전체면적 버튼 — 25평, 29평, 33평 일반적으로 한국에서 불리는 평수로 변환하고 각 평수의 물건들을 매매최저가, 전세최고가 1개씩만 표시해줘. 면적별 선택항목 셀렉터 제공.
+
+**처리 결과**
+1. `parser.py`: `supply_m2_to_pyeong()`, `parse_area_option()` 추가 — 공급면적(㎡) → 25/29/33평 버킷 변환 (±1.5평 허용)
+2. `config.py`: `area_filter_chip`, `area_filter_layer`, `area_filter_items` 셀렉터 추가
+3. `crawler.py`: `_open_area_filter`, `_set_area_filter`, `_collect_by_pyeong` 구현
+   - 단지별 전체면적 드롭다운 파싱 → 25/29/33평 그룹핑
+   - 그룹별 면적 필터 적용 → 매매(낮은가격순) 1건 + 전세(높은가격순) 1건
+   - 힐스테이트영통 예: 87㎡대→25평, 96.45㎡→29평, 110~111㎡→33평
+4. `main.py`: `평수` 컬럼 추가, 출력 메시지 갱신
+5. `test_dong_feature.py`: 평수 변환(TC4) 및 결과 구조 테스트 갱신
+
+**변경 파일**: `parser.py`, `config.py`, `crawler.py`, `main.py`, `test_dong_feature.py`, `memory-bank/*`
+
+---
+
 ## 2026-06-06 (Excel 2시트 출력 + 카드 상세 정보 수집)
 
 ### [2026-06-06] 요청 11

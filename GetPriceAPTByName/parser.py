@@ -1,5 +1,36 @@
 import re
 
+# 한국 아파트에서 일반적으로 부르는 표준 평형 (공급면적 기준)
+STANDARD_PYEONG = (25, 29, 33)
+PYEONG_M2 = 3.305785  # 1평 = 3.305785㎡
+
+
+def _parse_supply_m2(area_text: str) -> float | None:
+    """'87.12A㎡ (62.8A) 161' → 87.12 (공급면적 우선)"""
+    m = re.search(r"([\d.]+)\s*[A-Za-z]?㎡", area_text)
+    if m:
+        return float(m.group(1))
+    return None
+
+
+def supply_m2_to_pyeong(supply_m2: float) -> int | None:
+    """공급면적(㎡)을 25/29/33평 버킷으로 변환. ±2.0평 허용.
+    87.87㎡ = 26.58평이므로 1.5 허용 시 누락 → 2.0으로 조정.
+    """
+    pyeong = supply_m2 / PYEONG_M2
+    for bucket in STANDARD_PYEONG:
+        if abs(pyeong - bucket) <= 2.0:
+            return bucket
+    return None
+
+
+def parse_area_option(area_text: str) -> tuple[float | None, int | None]:
+    """면적 필터 항목 텍스트 → (공급면적㎡, 표준평수)"""
+    supply = _parse_supply_m2(area_text)
+    if supply is None:
+        return None, None
+    return supply, supply_m2_to_pyeong(supply)
+
 
 def _parse_name_dong(name_text: str) -> tuple[str, str]:
     """

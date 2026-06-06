@@ -15,6 +15,9 @@
    - `history.md` → 항상 (프롬프트 원문 + 결과 요약)
    - `implementation-plan.md` → 작업 상태 변경 시
    - `design.md` → 설계/구조/흐름 변경 시
+   - `progress.md` → 작업 완료 시
+   - `architecture.md` → 파일/함수 구조 변경 시
+   - `testresult.md` → 테스트 실행 시
    - `AGENTS.md` → 원칙 변경 시
 
 ---
@@ -27,6 +30,9 @@
 | `AGENTS.md` | 에이전트 역할 및 원칙 | 원칙 변경 시 |
 | `history.md` | 대화 및 처리 이력 | **매 사용자 요청마다 (필수)** |
 | `implementation-plan.md` | 단계별 구현 계획 및 진행 상태 | 작업 시작/완료마다 |
+| `progress.md` | 작업 진행 현황 (시간순) | 작업 완료마다 |
+| `architecture.md` | 파일 구조·함수 역할·통찰 | 구조 변경 시 |
+| `testresult.md` | 테스트 실행 결과 | 테스트 수행마다 |
 
 > **CLAUDE.md 와 연동**: 프로젝트 루트의 `CLAUDE.md` 가 Claude Code 의 최우선 행동 지침이다.
 > `AGENTS.md` 는 그 세부 내용을 보완한다. 두 파일이 충돌하면 `CLAUDE.md` 를 따른다.
@@ -47,6 +53,8 @@
   ├─ 작업 수행 (design.md 명세 준수)
   │
   ├─ implementation-plan.md 상태 업데이트
+  │
+  ├─ progress.md / architecture.md / testresult.md 갱신 (해당 시)
   │
   └─ history.md 에 결과 요약 기록
 ```
